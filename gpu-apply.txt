@@ -1,0 +1,11 @@
+！！默认登陆进入登陆节点，无法直接使用GPU，需要通过slurm申请GPU！！
+
+例：申请一张 GPU 的交互环境：
+srun -G 1 --time=00:15:00 --pty bash
+提交批处理任务：
+sbatch -G 1 --time=00:15:00 job.sh
+查看队列和资源：
+sinfo
+squeue
+
+srun -N 1 -G 1 nvidia-smi

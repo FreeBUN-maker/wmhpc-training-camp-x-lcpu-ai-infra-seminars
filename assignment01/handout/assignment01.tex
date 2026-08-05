@@ -142,12 +142,12 @@ make run/m0_env/02_device_query
 \toprule
 项目 & 你的卡 \\
 \midrule
-型号 / compute capability & \\
-SM 数量 & \\
-warp 大小 & \\
-shared memory / block & \\
-最大常驻线程 / SM & \\
-显存总量 & \\
+型号 / compute capability & NVIDIA GeForce RTX 5090\\
+SM 数量 & 170\\
+warp 大小 & 32 \\
+shared memory / block & 49152\\
+最大常驻线程 / SM & 1536\\
+显存总量 & 33668857856\\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -171,14 +171,18 @@ Guide 1.1、1.2.1--1.2.2；LCPU 讲义\footnote{\url{https://github.com/interest
 判断对错，可以顺带补一句理由。
 \begin{enumerate}[label=(\alph*)]
   \item 一块标称 100 TFLOPS 的 GPU，执行单条指令的延迟一定低于 5 GHz 的 CPU。
+  答：错误。GPU的算力是所有SIMT处理核算力的加总，单核性能不一定比得上CPU的单核。
   \item HBM 的“高带宽”指大块连续访问时的吞吐，零散的随机访问达不到标称值。
+  答：正确。零散的访问地址可能导致映射到HBM中的物理地址非常集中，无法利用HBM内部的并行度，用不满带宽。
   \item 严格串行的迭代算法（每步依赖上一步的结果），即使换一块算力更强的 GPU 也快不了多少。
+  答：正确。严格的串行算法无法通过SIMT的方式来进行访存和计算的overlap，因此本质上是用单个core进行串行计算，而GPU的算力提升一般来源于核心数量的提升，单核性能提升不显著。
   \item “算力 1000 TFLOPS”意味着每次运算的延迟是 $10^{-15}$ 秒。
+  答：错误。算力是一个吞吐上的概念，1000TFLOPS也可能是用 $10^{-13}$ 秒完成100OPS的计算。
 \end{enumerate}
 
 \prob{1.2}{CONCEPT}
 Session 1 讲座里提过“N 方过百万”这个例子。总计算量 $10^{12}$ FLOP 在当代 GPU 上的运算时间大概是毫秒级，那为什么一个严格在线的串行算法仍然做不到几秒内跑完？（从“延迟”和“吞吐”的角度考虑）
-
+答：严格串行的算法由于数据依赖无法利用GPU的并行计算能力，真正使用的GPU算力远远不足
 \prob{1.3}{CONCEPT}
 补全下表（thread 一行已填好作为示例）
 
@@ -188,16 +192,17 @@ Session 1 讲座里提过“N 方过百万”这个例子。总计算量 $10^{12
 执行层次 & 软件含义 & 对应硬件 & 直接可用的存储 & 同步与通信手段 \\
 \midrule
 thread & kernel 的最小执行单位 & 计算单元上的一个 lane & 自己的寄存器 & （自身天然有序） \\
-warp &  &  &  &  \\
-block / CTA &  &  &  &  \\
-grid &  &  &  &  \\
+warp & GPU调度thread的最小单元 & SM中的一个分区 & L0, L1 (不含shared memory) & warp之间的通讯通过L0, L1进行。GPU调度时天然等待一个warp中的所有 \\
+block / CTA & thread协作的基本单位 & SM & L0, L1 (含shared memory) & 使用cuda同步机制，通信通过shared memory进行 \\
+grid & 一次函数调用中启用的顶层数据结构，由若干block组成 & GPU & 全局 & 通过main memory传递数据 \\
 \bottomrule
 \end{tabular}
 \end{center}
 
 \prob{1.4}{CONCEPT}
 SIMD 与 SIMT 的区别？另：判断正误——Nvidia GPU 在 Volta 之后每个线程有独立的 program counter，所以 branch divergence 不再有性能代价。
-
+答：SIMD与SIMT的区别在于thread和pc的数量，SIMD中是一个thread, 一个pc同时对多个data进行同一种操作，而SIMT则是同时调度多个thread的执行，每个thread有自己的pc并且可以单独执行。
+判断正误：错误。GPU中同一个warp内thread的路径不同时会退化为串行执行，依次执行每个branch并mask掉不经过这个branch的thread，导致部分thread挂起，对应的硬件空转，降低硬件利用率
 \prob{1.5}{EXPERIMENT}[cuda/m1\_why\_gpu/01\_scaling.cu]
 同一个向量加法，四种配置各跑一遍。
 
@@ -213,13 +218,16 @@ make run/m1_why_gpu/01_scaling
 \toprule
 配置 & 耗时 (ms) & ns / 元素 \\
 \midrule
-CPU 单线程 & & \\
-GPU \texttt{<<<1,1>>>} & & \\
-GPU \texttt{<<<1,256>>>} & & \\
-GPU 铺满 grid & & \\
+CPU 单线程 & 10.234 & 2.44 \\
+GPU \texttt{<<<1,1>>>} & 137.703 & 32.83 \\
+GPU \texttt{<<<1,256>>>} & 2.377 & 0.57 \\
+GPU 铺满 grid & 0.023 & 0.01 \\
 \bottomrule
 \end{tabular}
 \end{center}
+
+答：(a) GPU的单核能力弱于CPU，因为CPU中有分支预测以及prefetch等手段来给程序喂数据，降低流水线stall的概率，而GPU中没有这种技术，导致单核计算性能明显更弱；
+(b) GPU加速计算靠的是多个处理单元并行计算来摊薄总的访存延时
 
 \prob[Optional]{1.6}{FROM-SCRATCH}[kernels/simt\_sim.py]
 SIMT Simulator —— 写一个 warp 的执行模拟器：32 个 lane、共享控制流、带 mask 的分支执行与汇合。请在 \texttt{kernels/simt\_sim.py} 内完成（docstring 里面有具体实现要求）。工作量大概是 50 行以内的 Python。不需要 GPU。注：本题为 Module 3 的实验结果提供理论对照。判测命令如下：

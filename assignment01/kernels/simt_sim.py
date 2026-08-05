@@ -18,6 +18,35 @@ contract: 实现 run(program) -> (regs, cycles)
 通过 pytest tests/test_simt_sim.py 即为完成。
 """
 
+def exec_program(program: list, regs: list, mask: list, cycles: int):
+    for cmd in program:
+        if 1 not in mask:      # empty branch, skip
+            continue
+        if cmd[0] == "add":
+            regs = [regs[i] + cmd[1] * mask[i] for i in range(32)]
+            cycles += 1
+        elif cmd[0] == "mul":
+            regs = [regs[i] * cmd[1] if mask[i] else regs[i] for i in range(32)]
+            cycles += 1
+        elif cmd[0] == "if_lt":
+            _, t, then_prog, else_prog = cmd
+            then_mask = [int(i<t) * mask[i] for i in range(32)]
+            else_mask = [int(i>=t) * mask[i] for i in range(32)]
+            regs, cycles = exec_program(then_prog, regs, then_mask, cycles)
+            regs, cycles = exec_program(else_prog, regs, else_mask, cycles)
+        else:
+            raise ValueError("Undefined cmd type!")
+        print("cmd", cmd, "regs", regs, "cycles", cycles)
+    return regs, cycles
+    
+
+
 
 def run(program):
-    raise NotImplementedError("从这里开始写")
+    regs = list(range(32))
+    cycles = 0
+    full_mask = [1 for i in range(32)]
+    regs, cycles = exec_program(program, regs, full_mask, cycles)
+    print("final regs", regs, "cycles", cycles)
+    return regs, cycles
+    
