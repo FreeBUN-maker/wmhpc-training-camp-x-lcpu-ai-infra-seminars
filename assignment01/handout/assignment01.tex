@@ -264,10 +264,15 @@ make run/m2_first_kernel/01_vector_add
 为下列五个场景选择正确的修饰符（如 \texttt{\_\_global\_\_} 等）。
 \begin{enumerate}[label=(\alph*)]
   \item 在 GPU 上执行、由 CPU 侧启动的 kernel 函数。
+  答：__global__
   \item 只会被 kernel 调用的辅助函数。
+  答：__device__
   \item host 和 device 代码都要调用的小工具函数。
+  答：__global__
   \item 整个 kernel 运行期间不变、所有线程都要读的系数表。
+  答：__constant__
   \item block 内线程共享的暂存数组。
+  答：__shared__
 \end{enumerate}
 
 \prob{2.3}{MODIFY}[cuda/m2\_first\_kernel/02\_vector\_add\_um.cu]
@@ -278,14 +283,36 @@ cd assignment01/cuda
 make run/m2_first_kernel/02_vector_add_um
 \end{lstlisting}
 
+\begin{lstlisting}
+显示内存管理版本：
+./bin/m2_first_kernel/02_vector_add_um
+搬运 + kernel + 读回: 102.6 ms
+PASS
+rm bin/m2_first_kernel/02_vector_add_um
+\end{lstlisting}
+
+\begin{lstlisting}
+Unified Memory版本：
+./bin/m2_first_kernel/02_vector_add_um
+搬运 + kernel + 读回: 91.7 ms
+PASS
+rm bin/m2_first_kernel/02_vector_add_um
+\end{lstlisting}
+
 然后请回答如下问题：(a)~kernel 启动之后、CPU 读结果之前，为什么必须有一次同步？在原先的版本里这次同步发生在哪个调用里？(b)~对比两版“搬运 + kernel + 读回”的耗时，分析差距的原因（谁快谁慢都有可能，与使用的卡有关）。
+
+答：(a) 为了保证CPU读数据的时候所有thread都已经执行完，CPU能得到正确的结果。原先的版本中这个同步发生在CUDA_CHECK_KERNEL()这个函数里。
+(b) Unified memory版本更快。用的是5090的卡。这个更快的原因可能是用Unified memory模式的时候，cuda内部会将host到device的数据搬运和gpu的计算任务进行overlap，从而减少了整体的延时。
 
 \prob{2.4}{CONCEPT}
 判断对错，可以顺带补一句理由。
 \begin{enumerate}[label=(\alph*)]
   \item \texttt{vectorAdd<<<...>>>(...)} 这条语句返回时，kernel 一定已经执行完毕。
+  答：错误。这条语句返回的时候只是cpu已经拉起了一个Kernel，并不一定执行完毕。
   \item 同一个 stream 里，\texttt{cudaMemcpy}（device 到 host）会等它前面的 kernel 全部完成后才开始拷贝。
+  答：错误。只要两个kernel之间没有执行同步操作，他们内部的线程执行就可能是乱序的。
   \item kernel 内部的非法访存，会在启动语句处同步地报出来。
+  答：错误。kernel内部的报错会等执行它的线程运行到非法操作的时候报出。
 \end{enumerate}
 
 \prob{2.5}{DEBUG}[cuda/m2\_first\_kernel/03\_bug\_launch.cu]
@@ -295,6 +322,10 @@ make run/m2_first_kernel/02_vector_add_um
 cd assignment01/cuda
 make run/m2_first_kernel/03_bug_launch
 \end{lstlisting}
+
+答：出bug的原因在于给每个block开了过高的线程数。实验环境的GPU是5090，最大线程数/SM为1536，而原程序开了2048.
+之所以原来不加CHECK_CUDA_KERNEL()不会有任何反映，是因为程序中没有检查cuda kernel的错误，也没有执行synchronize，直接读了memory里面的结果，因此报错
+只来源于评测程序中发现结果不对。
 
 \prob{2.6}{FILL-IN}[cuda/m2\_first\_kernel/04\_matrix\_add.cu]
 \texttt{04\_matrix\_add.cu} 用二维的 block 和 grid 处理 $1000 \times 700$ 的矩阵，请填空实现矩阵加法。测试命令：
@@ -314,6 +345,9 @@ make run/m2_first_kernel/05_grid_stride
 
 然后请回答——这种写法的价值在哪里？launch 只有 16384 个线程时，性能上要付出什么代价？
 
+答：这种写法的价值在于可以将一个Kernel需要使用的算力与其问题规模解耦，这样就可以自由地为不同的kernel分配算力。这样做在性能上付出的代价是用的lane减少了，
+即GPU的算力没有用满
+
 \prob{2.8}{EXPERIMENT}[cuda/m2\_first\_kernel/06\_whoami.cu]
 运行下面的程序两三次，观察 16 个 block 打印输出的先后。
 
@@ -323,6 +357,8 @@ make run/m2_first_kernel/06_whoami
 \end{lstlisting}
 
 (a)~顺序由谁决定？(b)~程序的正确性可以依赖 block 的执行顺序吗？这条限制和 Guide 1.1 说的 scalable programming model 有什么关系？
+
+答：(a) 顺序由每个thread完成的先后顺序决定; (b) 程序的正确性不能依赖block的执行顺序。这条限制是scalable programming model对于程序提出要求。
 
 \begin{capstone}{prob 2.9（FROM-SCRATCH）：SAXPY \hfill {\footnotesize\ttfamily cuda/m2\_first\_kernel/saxpy.cu}}
 在 \texttt{m2\_first\_kernel/} 下写出完整的 CUDA 程序 \texttt{saxpy.cu}，实现 $y \leftarrow 2.0 \cdot x + y$（单精度）。要求如下:
