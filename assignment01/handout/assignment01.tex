@@ -264,15 +264,15 @@ make run/m2_first_kernel/01_vector_add
 为下列五个场景选择正确的修饰符（如 \texttt{\_\_global\_\_} 等）。
 \begin{enumerate}[label=(\alph*)]
   \item 在 GPU 上执行、由 CPU 侧启动的 kernel 函数。
-  答：__global__
+  答: __global__
   \item 只会被 kernel 调用的辅助函数。
-  答：__device__
+  答: __device__
   \item host 和 device 代码都要调用的小工具函数。
-  答：__global__
+  答: __global__
   \item 整个 kernel 运行期间不变、所有线程都要读的系数表。
-  答：__constant__
+  答: __constant__
   \item block 内线程共享的暂存数组。
-  答：__shared__
+  答: __shared__
 \end{enumerate}
 
 \prob{2.3}{MODIFY}[cuda/m2\_first\_kernel/02\_vector\_add\_um.cu]
@@ -415,6 +415,19 @@ make run/m3_simt/01_divergence
 
 请解释实测比值，并回答——若两个分支的计算量一大一小，按 thread 编号奇偶分的 kernel 和按 warp 边界对齐分的 kernel 的运行时间分别由什么决定？
 
+\begin{lstlisting}
+测试结果：
+warp 内分支 (tid % 2)    :    0.373 ms
+按 warp 分支 (tid/32 % 2):    0.191 ms
+比值: 1.95
+\end{lstlisting}
+
+答: 按照warp边界对齐划分分支的kernel运行会快一些，运行时间大约是另一个kernel的一半。
+这是因为它的warp内部没有线程束分化，因此每个warp的执行时间都是等于一个thread的运行时间；而按照threadIdx奇偶性
+划分分支的kernel每个warp内部都会有属于两个branch的thread，因此每个warp都需要经历两个branch，时间翻倍。实测结果与此略有偏差，可能是因为每个kernel内部的所有thread不是完全同步地执行的，因此时间上略有偏差。
+
+如果两个分支的计算量一大一小，按照thread编号奇偶划分的kernel运行时间由两个分支的总计算量决定，而按照warp边界对齐分的kernel运行时间由计算量较大的一个分支的运行时间决定。
+
 \prob{3.3}{EXPERIMENT}[cuda/m3\_simt/02\_sync\_matters.cu]
 \texttt{02\_sync\_matters.cu} 让每个 block 用 shared memory 把自己的 256 个元素倒序。请按文件开头的注释内容进行实验。
 
@@ -424,9 +437,14 @@ make run/m3_simt/02_sync_matters
 \end{lstlisting}
 
 (a)~为什么注释掉 sync 后代码不能正确地运行？(b)~(Optional) 注释掉 sync 后，翻转后的数组错的位置比较随机，但是有些位置一直是对的，试解释原因。（tip: 算一算 $t$ 与 $255-t$ 有没有可能落在同一个 warp）
+答：(a)因为thread之间的执行顺序是无法保证的，去掉sync代码之后可能某个thread读buf的时候它需要的数据还没有被另一个thread写入。
+(b)这个例子中没有某个warp需要的数据传输在warp内部的情况，所有warp需要的数据都是另一个warp写入shared memory的。但是因为固定的硬件对于warp的调度顺序有某种固定倾向，因此某些warp之间的执行顺序相对固定，所以
+对应的位置表现出稳定的正确性。
 
 \prob{3.4}{CONCEPT}
 \texttt{\_\_syncthreads} 只能同步本 block 内的 threads，那需要全 grid 同步时，标准做法是什么？
+
+答：标准做法是通过main memory，即GPU的显存来传递数据，并调用\texttt{cudaDeviceSynchronize}来确保同步性。
 
 \begin{capstone}{prob 3.5（FROM-SCRATCH）：block 内归约 \hfill {\footnotesize\ttfamily cuda/m3\_simt/03\_reduce.cu}}
 在 \texttt{03\_reduce.cu} 里从零实现两个求和归约 kernel（判测与计时的代码已经写好）。两个 kernel 的 contract 见文件头。PASS 后，试解释实测性能差距的原因。
