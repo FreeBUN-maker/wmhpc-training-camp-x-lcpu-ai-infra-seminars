@@ -398,8 +398,11 @@ Guide 2.3.1--2.3.2、1.2.2.2。3.3、3.5 要用 shared memory，用法见 Guide 
 设 \texttt{blockDim = (8, 8, 1)}。
 \begin{enumerate}[label=(\alph*)]
   \item \texttt{threadIdx = (3, 5, 0)} 的线性编号是多少？它在第几个 warp、warp 内第几个 lane？
+  答：线性编号为29，它在第0个warp内的第29个lane。
   \item 这个 block 一共占多少个 warp？
+  答：一共占用了2个warp
   \item 若 \texttt{blockDim = (33, 1, 1)}，占几个 warp？这样配置浪费在哪里？
+  答：一共占用两个warp。这样配置的话idx=1的warp实际上只有1个thread在工作，但是依然占用了一个warp，浪费了另外31个thread的计算资源。
 \end{enumerate}
 
 \prob{3.2}{EXPERIMENT}[cuda/m3\_simt/01\_divergence.cu]
