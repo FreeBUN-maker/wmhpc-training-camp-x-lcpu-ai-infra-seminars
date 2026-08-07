@@ -540,6 +540,10 @@ make run/m4_memory/04_histogram_priv
 
 测试结果包含与 naive 实现相比较的耗时、吞吐。试解释提速来自哪里。
 
+答：提速来自于所有thread进行atomic操作时的访存带宽变大了。进行了修改之后，在每个thread向shared memory中的hist副本进行
+累加操作时，所有thread的访存带宽大约是这个kernel享有的所有SM与shared memory的带宽之和，这远远大于每个thread都直接访问global memory中的hist时享有的
+显存带宽。
+
 \prob{4.7}{EXPERIMENT}[cuda/m4\_memory/05\_bandwidth.cu]
 运行实验，并根据实验数据填表。
 
@@ -555,10 +559,15 @@ make run/m4_memory/05_bandwidth
 \toprule
 stride & 1 & 2 & 4 & 8 & 16 & 32 \\
 \midrule
-GB/s & & & & & & \\
+GB/s & 1891.9 & 1196.6 & 741.0 & 587.2 & 1652.6 & 867.2 \\
 \bottomrule
 \end{tabular}
 \end{center}
+
+答：当stride <= 8时，kernel体现出的global memory访问带宽持续下降，这是因为每个thread需要4B数据，而global memory的访问粒度是
+32B，当stride增大的时候，memory access coalescing的效率逐渐降低，因此带宽逐渐降低。而最后两组实验的带宽突然变大，这个其实是因为给出
+的评测样例n刚好为2的幂，strided_copy实际上只访问了in的一个子集，当stride变大的时候cache hit rate会上升，最后两组实验里有很多的memory access都是走的片上
+L2 cache，并不是访问global memory的，带宽因此变大。
 
 \prob{4.8}{EXPERIMENT}[cuda/m4\_memory/06\_occupancy.cu]
 \texttt{06\_occupancy.cu}，详细内容见相关文件。实验命令如下：
@@ -581,7 +590,24 @@ occupancy & & & & & & \\
 \end{tabular}
 \end{center}
 
-请回答：(a)~用程序开头打印的“shared memory / SM”和“最大常驻线程 / SM”，手算其中一个的驻留 block 数和 occupancy，和 API 的结果对照。(b)~带宽为什么随 occupancy 下降？用“延迟隐藏需要足够多的常驻 warp”组织你的解释。(c)~表中带宽随 occupancy 单调下降，但明显不成正比——从 100\% 到 75\% 带宽掉了多少？从 37.5\% 到 12.5\% 又掉了多少？试解释这个差别。
+shared/block   理论 block/SM  occupancy   实测带宽
+     0.0 KB          6          100.0%     1567.9 GB/s
+    13.2 KB          6          100.0%     1569.7 GB/s
+    15.0 KB          6          100.0%     1570.6 GB/s
+    18.0 KB          5           83.3%     1574.4 GB/s
+    29.0 KB          3           50.0%     1577.7 GB/s
+    55.0 KB          1           16.7%      813.2 GB/s
+
+请回答：(a)~用程序开头打印的“shared memory / SM”和“最大常驻线程 / SM”，手算其中一个的驻留 block 数和 occupancy，和 API 的结果对照。
+(b)~带宽为什么随 occupancy 下降？用“延迟隐藏需要足够多的常驻 warp”组织你的解释。
+(c)~表中带宽随 occupancy 单调下降，但明显不成正比——从 100\% 到 75\% 带宽掉了多少？从 37.5\% 到 12.5\% 又掉了多少？试解释这个差别。
+
+答：(a) 当shared/block = 13.2 KB时，根据100KB/SM的shared memory总容量计算，一个SM上可以容纳7个block。但是由于SM上最大的驻留thread数量为1536 = 256 * 6，且kernel launch的blockDim参数为256，
+因此每个SM最多驻留6个block，occupancy为100\%，与程序计算结果相同；
+(b) 当一个SM上有很多warp在执行时，一个warp的访存很容易跟另一个warp的计算进行overlap，从而隐藏计算/访存的延时。而当warp数量不够多时，很可能出现
+某个时刻所有的warp都在计算/都在访存，这样这部分延时就暴露出来了。在本例中，当block/SM = 1时，每个SM上只有4个warp，只要它们同时在计算，访存带宽在这个时候就是浪费的，因此导致bandwidth下降
+(c) 从 100\% 到 75\% 带宽没掉，从50.0\%到16.7\%大约掉了一半。这与前一问的解释是相关的，带宽掉多少取决于有多少延时没有被盖住，当warp数量足够多的时候，同一个SM的算力和带宽都已经被用满，是warp
+在等待SM的处理，这时候降低一些occupancy也不会有带宽的降低；而当warp数量降低到可以让SM的带宽出现空转的临界点时，带宽就会随occupancy显著下降。
 
 \begin{lookback}
 本模块的八道题围绕同一个问题展开：数据放在哪一层，以什么模式去取。prob 4.1 给出一幅静态的存储层次地图，prob 4.2 与 4.3 在同一段 stencil 上切换存储位置，prob 4.5 与 4.6 在同一个直方图统计上做同样的变换，prob 4.7 和 4.8 则分别量化访问模式与可并发的请求数量。
