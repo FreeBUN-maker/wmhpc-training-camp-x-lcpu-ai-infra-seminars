@@ -483,11 +483,11 @@ Guide 2.3.3--2.3.5、2.3.7、1.2.3。
 空间 & 谁可见 & 生命周期 & 片上 / 片外 & 谁管理 \\
 \midrule
 register & 单个线程 & 线程 & 片上 & 编译器 \\
-local &  &  &  &  \\
-shared &  &  &  &  \\
-global &  &  &  &  \\
-constant &  &  &  &  \\
-L1 / L2 cache &  &  &  &  \\
+local & 单个线程 & 线程 & 片外 & 用户 \\
+shared & 单个Block & 线程 & 片上 & 用户 \\
+global & 整个grid & 应用程序 & 片外 & 用户 \\
+constant & 整个grid & 应用程序 & 偏外 & 编译器 \\
+L1 / L2 cache & 单个线程 & 线程 & 片上 & 编译器 \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -510,11 +510,16 @@ make run/m4_memory/02_constant_coeff
 
 结果会包含两个版本的耗时（差距可能极小，甚至测不出来性能收益——想想为什么），回答 constant cache 真正的优势在哪种访问模式。
 
+答：性能差别测不出来是因为constant类型的数组也是存在globa memory里面的，读取速率没有发生变化。constant cache的真正优势在于多个kernel都需要访问这个
+常数数组的时候可以避免重复搬运常数，让它常驻显存。
+
 \prob{4.4}{CONCEPT}
 判断对错，可以顺带补一句理由。
 \begin{enumerate}[label=(\alph*)]
   \item local memory 的“local”指作用域私有，它实际上在片外显存里。
+  答：正确。CUDA Programming Guide的2.3.3.4章节第一段就是如此描述的。
   \item 对数组用运行期才知道的下标做索引，可能迫使它被放进 local memory。
+  答：正确。CUDA对于无法在编译时确定索引的数组可能会将其放到Local memory中，因为无法直接为它分配thread的regfile资源。
 \end{enumerate}
 
 \prob{4.5}{FILL-IN}[cuda/m4\_memory/03\_histogram.cu]
