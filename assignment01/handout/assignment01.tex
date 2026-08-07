@@ -635,12 +635,19 @@ make run/m5_async/01_timing_trap
 并回答下列问题：
 (a)~哪个数值可以当作 kernel 耗时写进报告？(b)~另外两个各具体测的是什么？
 
+答：(a) cudaEvent的计时可以当作kernel耗时写进报告
+(b) host计时、不等GPU记录的是CPU拉起kernel的时间，而host计时、等GPU记录的是kernel运行时间加上CPU拉起kernel的时间。
+
+
 \prob{5.2}{CONCEPT}
 判断对错，可以顺带补一句理由。
 \begin{enumerate}[label=(\alph*)]
   \item 同一个 stream 里的操作按提交顺序执行。
+  答：正确。
   \item kernel 启动后，host 代码立刻继续往下执行。
+  答：正确。只要CPU中还有别的任务不需要等待这个kernel进行sync，就可以继续执行别的操作，不用等kernel跑完。
   \item unified memory 下，CPU 访问一页正被 GPU 占用的内存，会触发缺页与页迁移。
+  答：错误。unified memory允许CPU和GPU同时访问某一块内存空间，只要没有因为程序中的同步等操作导致lock。
 \end{enumerate}
 
 \begin{lookback}
