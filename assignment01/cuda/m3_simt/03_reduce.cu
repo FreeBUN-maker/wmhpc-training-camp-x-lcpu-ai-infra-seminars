@@ -37,6 +37,7 @@
 #include "common.h"
 
 #define BLOCK 256
+#define FULL_MASK 0xffffffff
 
 __global__ void reduce_interleaved(const float *in, float *out) {
     // TODO：从这里开始写（交错配对版本）
@@ -46,7 +47,7 @@ __global__ void reduce_interleaved(const float *in, float *out) {
     buf[t] = in[base + t];
     __syncthreads();
     for (int s=1; s < blockDim.x; s = s*2){
-        if (t % s == 0) buf[t] = buf[t] + buf[t + s];
+        if (t % (s*2) == 0) buf[t] = buf[t] + buf[t + s];
         __syncthreads();
     }
     if (t == 0) out[blockIdx.x] = buf[0];
@@ -54,7 +55,39 @@ __global__ void reduce_interleaved(const float *in, float *out) {
 
 __global__ void reduce_contiguous(const float *in, float *out) {
     // TODO：从这里开始写（连续配对版本）
+    __shared__ float buf[BLOCK];
+    int base = blockIdx.x * BLOCK;
+    int t = threadIdx.x;
+    buf[t] = in[base + t];
+    __syncthreads();
+    for (int s=blockDim.x/2; s > 0; s = s/2){
+        if (t < s) buf[t] = buf[t] + buf[t+s];
+        __syncthreads();
+    }
+    if (t == 0) out[blockIdx.x] = buf[0];
+}
 
+__global__ void reduce_shuffle(const float *in, float *out){
+    __shared__ float buf[BLOCK];
+    int base = blockIdx.x * BLOCK;
+    int t = threadIdx.x;
+
+    // Stage 1: Reduce in Shared Memory
+    buf[t] = in[base + t];
+    __syncthreads();
+    for (int s=blockDim.x/2; s > 16; s = s/2){
+        if (t < s) buf[t] = buf[t] + buf[t+s];
+        __syncthreads();
+    }
+
+    // Stage 2: Reduce in the first warp
+    if (t<32){
+        float val = buf[t];         // load effective value from shared memory to regfile
+        for (int s=16; s > 0; s=s/2){
+            val += __shfl_down_sync(FULL_MASK, val, s);
+        }
+        if (t == 0) out[blockIdx.x] = val;
+    }
 }
 
 // ---------------- 以下是判测与计时，不要修改 ----------------
@@ -109,8 +142,12 @@ int main() {
                          h_partial, nblocks);
     float ms_c = run_one(reduce_contiguous, "contiguous ", d_in, d_out, h_out,
                          h_partial, nblocks);
+    float ms_s = run_one(reduce_shuffle, "shuffle ", d_in, d_out, h_out,
+                         h_partial, nblocks);
     // 阈值 1.5x：A100 实测 2.22x、V100 实测 2.33x，两版写成一样时是 ~1x。
     float ratio = report_speedup("interleaved / contiguous", ms_i, ms_c, 1.5f,
+                                 "两版耗时几乎一样，检查是不是写成同一个实现了");
+    float ratio_s = report_speedup("contiguous / shuffle", ms_c, ms_s, 1.5f,
                                  "两版耗时几乎一样，检查是不是写成同一个实现了");
 
     char metrics[192];
