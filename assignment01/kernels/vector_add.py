@@ -23,7 +23,8 @@ def add_kernel(x_ptr, y_ptr, z_ptr, n, BLOCK_SIZE: tl.constexpr):
     y = tl.load(y_ptr + offsets, mask=mask, other=0.0)
 
     # ====== 空 4：把 x + y 写回 z（别忘了 mask） ======
-    z = tl.store(z_ptr + offsets, mask=mask, other=0)
+    z = x + y
+    tl.store(z_ptr + offsets, z, mask = mask)
 
 
 def add(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
