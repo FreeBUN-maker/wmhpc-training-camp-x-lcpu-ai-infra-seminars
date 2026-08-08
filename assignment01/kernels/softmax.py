@@ -19,4 +19,10 @@ import triton.language as tl
 
 
 def softmax(x: torch.Tensor) -> torch.Tensor:
-    raise NotImplementedError("从这里开始写")
+    # raise NotImplementedError("从这里开始写")
+    M, N = x.shape
+    BLOCK_M = 4
+    BLOCK_N = 2
+    while (BLOCK_N < N):
+      BLOCK_N *= 2
+    
