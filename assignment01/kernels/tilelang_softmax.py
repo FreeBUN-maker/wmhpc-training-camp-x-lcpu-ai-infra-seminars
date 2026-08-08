@@ -27,16 +27,54 @@ def make_softmax(M, N, BLOCK_M, BLOCK_N,
                  threads=128, num_stages=3,
                  dtype="float32"):
     @T.prim_func
-    def main(
-       X: T.Buffer((M, N), dtype)
-    ):
-       with T.Kernel(
+    def main(X: T.Tensor((M, N), dtype), Y: T.Tensor((M,N), dtype)):
+        with T.Kernel(
           T.ceildiv(N, BLOCK_N), 
           T.ceildiv(M, BLOCK_M), 
           threads = threads
         ) as (bx, by):
-          X_shared = T.alloc_shared((BLOCK_M, BLOCK_N), dtype)
-          max_local = T.alloc_fragment((BLOCK_M, ))
+          x_local = T.alloc_fragment((BLOCK_M, BLOCK_N), dtype)
+          max_local = T.alloc_fragment((BLOCK_M,), dtype)
+          sum_local = T.alloc_fragment((BLOCK_M,), dtype)
+          T.clear(max_local)
+          T.clear(sum_local)
+
+          # copy X to x_local and padding -inf for ineffective items
+          for i,j in T.Parallel(BLOCK_M, BLOCK_N):
+            gi = by * BLOCK_M + i
+            gj = j
+            valid = gi < M and gj < N
+            x_local[i, j] = T.if_then_else(
+              valid,
+              X[gi, gj],
+              -T.infinity(dtype)
+            )
+
+          # compute row maximum
+          T.reduce_max(x_local, max_local, dim=1)
+          
+          # exp(x-max) and zero padding
+          for i,j in T.Parallel(BLOCK_M, BLOCK_N):
+            gi = by * BLOCK_M + i
+            gj = j
+            valid = gi < M and gj < N
+            x_local[i,j] = T.if_then_else(
+               valid,
+               T.exp(x_local[i,j] - max_local[i]),
+               0
+            )
+
+          # local sum
+          T.reduce_sum(x_local, sum_local, dim=1)
+
+          # normalize and storei
+          for i,j in T.Parallel(BLOCK_M, BLOCK_N):
+            gi = by * BLOCK_M + i
+            gj = j
+            valid = gi < M and gj < N
+            if valid:
+              Y[gi, gj] = x_local[i,j] / sum_local[i] 
+    return main      
     
 
 def softmax(x: torch.Tensor) -> torch.Tensor:
@@ -48,7 +86,8 @@ def softmax(x: torch.Tensor) -> torch.Tensor:
       BLOCK_N *= 2
     func = make_softmax(M, N, BLOCK_M, BLOCK_N)
     kernel = tilelang.compile(func, out_idx=[1])
-    return kenrel(x)
+    y = kernel(x)
+    return y
 
 
 
