@@ -182,7 +182,9 @@ Guide 1.1、1.2.1--1.2.2；LCPU 讲义\footnote{\url{https://github.com/interest
 
 \prob{1.2}{CONCEPT}
 Session 1 讲座里提过“N 方过百万”这个例子。总计算量 $10^{12}$ FLOP 在当代 GPU 上的运算时间大概是毫秒级，那为什么一个严格在线的串行算法仍然做不到几秒内跑完？（从“延迟”和“吞吐”的角度考虑）
-答：严格串行的算法由于数据依赖无法利用GPU的并行计算能力，真正使用的GPU算力远远不足
+答：严格串行的算法由于数据依赖无法并行执行，此时吞吐不能靠提高计算的并行度来提高，而是严格与延迟成反比，因此在GPU这种单核能力弱、靠提高并发度来
+提高算力的平台上，无法达到很高的处理速度。
+
 \prob{1.3}{CONCEPT}
 补全下表（thread 一行已填好作为示例）
 
@@ -192,8 +194,8 @@ Session 1 讲座里提过“N 方过百万”这个例子。总计算量 $10^{12
 执行层次 & 软件含义 & 对应硬件 & 直接可用的存储 & 同步与通信手段 \\
 \midrule
 thread & kernel 的最小执行单位 & 计算单元上的一个 lane & 自己的寄存器 & （自身天然有序） \\
-warp & GPU调度thread的最小单元 & SM中的一个分区 & L0, L1 (不含shared memory) & warp之间的通讯通过L0, L1进行。GPU调度时天然等待一个warp中的所有 \\
-block / CTA & thread协作的基本单位 & SM & L0, L1 (含shared memory) & 使用cuda同步机制，通信通过shared memory进行 \\
+warp & GPU调度thread的最小单元 & SM中的一个分区 & L0, L1 (不含shared memory) & warp之间的通讯通过L0, L1进行，通过CUDA提供的warp_primitive调用 \\
+block / CTA & thread协作的基本单位 & SM & L0, L1 (含shared memory) & 使用__syncthreads同步机制，通信通过shared memory进行 \\
 grid & 一次函数调用中启用的顶层数据结构，由若干block组成 & GPU & 全局 & 通过main memory传递数据 \\
 \bottomrule
 \end{tabular}
@@ -268,7 +270,7 @@ make run/m2_first_kernel/01_vector_add
   \item 只会被 kernel 调用的辅助函数。
   答: __device__
   \item host 和 device 代码都要调用的小工具函数。
-  答: __global__
+  答: __host__ __device__
   \item 整个 kernel 运行期间不变、所有线程都要读的系数表。
   答: __constant__
   \item block 内线程共享的暂存数组。
@@ -301,8 +303,9 @@ rm bin/m2_first_kernel/02_vector_add_um
 
 然后请回答如下问题：(a)~kernel 启动之后、CPU 读结果之前，为什么必须有一次同步？在原先的版本里这次同步发生在哪个调用里？(b)~对比两版“搬运 + kernel + 读回”的耗时，分析差距的原因（谁快谁慢都有可能，与使用的卡有关）。
 
-答：(a) 为了保证CPU读数据的时候所有thread都已经执行完，CPU能得到正确的结果。原先的版本中这个同步发生在CUDA_CHECK_KERNEL()这个函数里。
-(b) Unified memory版本更快。用的是5090的卡。这个更快的原因可能是用Unified memory模式的时候，cuda内部会将host到device的数据搬运和gpu的计算任务进行overlap，从而减少了整体的延时。
+答：(a) 为了保证CPU读数据的时候所有thread都已经执行完，CPU能得到正确的结果。原先的版本中这个同步发生在CUDA_CHECK_KERNEL()这个函数里调用cudaDeviceSynchronize()的这个函数。
+(b) Unified memory版本更快。用的是5090的卡。这个更快的原因可能是用Unified memory模式的时候，GPU需要的数据按页迁移，而不是像原来一样调用一个同步的memcpy函数，
+这让cuda内部有将host到device的数据搬运和gpu的计算任务进行overlap的机会，从而减少了整体的延时。
 
 \prob{2.4}{CONCEPT}
 判断对错，可以顺带补一句理由。
@@ -310,7 +313,7 @@ rm bin/m2_first_kernel/02_vector_add_um
   \item \texttt{vectorAdd<<<...>>>(...)} 这条语句返回时，kernel 一定已经执行完毕。
   答：错误。这条语句返回的时候只是cpu已经拉起了一个Kernel，并不一定执行完毕。
   \item 同一个 stream 里，\texttt{cudaMemcpy}（device 到 host）会等它前面的 kernel 全部完成后才开始拷贝。
-  答：错误。只要两个kernel之间没有执行同步操作，他们内部的线程执行就可能是乱序的。
+  答：正确。同一个stream中不同kernel提交的各种操作都是严格按序执行的。
   \item kernel 内部的非法访存，会在启动语句处同步地报出来。
   答：错误。kernel内部的报错会等执行它的线程运行到非法操作的时候报出。
 \end{enumerate}
@@ -323,8 +326,8 @@ cd assignment01/cuda
 make run/m2_first_kernel/03_bug_launch
 \end{lstlisting}
 
-答：出bug的原因在于给每个block开了过高的线程数。实验环境的GPU是5090，最大线程数/SM为1536，而原程序开了2048.
-之所以原来不加CHECK_CUDA_KERNEL()不会有任何反映，是因为程序中没有检查cuda kernel的错误，也没有执行synchronize，直接读了memory里面的结果，因此报错
+答：出bug的原因在于给每个block开了过高的线程数。实验环境的GPU是5090，最大线程数/SM为1536，而原程序开了2048，这意味着一个block不能被调度到一个SM上执行.
+之所以原来不加CHECK_CUDA_KERNEL()不会有任何反映，是因为程序中没有检查cuda kernel的错误，只有进行memcpy操作的时候才会暴露出错误。
 只来源于评测程序中发现结果不对。
 
 \prob{2.6}{FILL-IN}[cuda/m2\_first\_kernel/04\_matrix\_add.cu]
@@ -345,8 +348,8 @@ make run/m2_first_kernel/05_grid_stride
 
 然后请回答——这种写法的价值在哪里？launch 只有 16384 个线程时，性能上要付出什么代价？
 
-答：这种写法的价值在于可以将一个Kernel需要使用的算力与其问题规模解耦，这样就可以自由地为不同的kernel分配算力。这样做在性能上付出的代价是用的lane减少了，
-即GPU的算力没有用满
+答：这种写法的价值在于可以将一个Kernel需要使用的算力与其问题规模解耦，这样就可以自由地为不同的kernel分配算力。这样做在性能上付出的代价是用的算力定死了，
+对不同规模的问题会使用同样的算力，可能导致大规模问题处理很慢。
 
 \prob{2.8}{EXPERIMENT}[cuda/m2\_first\_kernel/06\_whoami.cu]
 运行下面的程序两三次，观察 16 个 block 打印输出的先后。
@@ -358,7 +361,7 @@ make run/m2_first_kernel/06_whoami
 
 (a)~顺序由谁决定？(b)~程序的正确性可以依赖 block 的执行顺序吗？这条限制和 Guide 1.1 说的 scalable programming model 有什么关系？
 
-答：(a) 顺序由每个thread完成的先后顺序决定; (b) 程序的正确性不能依赖block的执行顺序。这条限制是scalable programming model对于程序提出要求。
+答：(a) 由每个block被调度执行的顺序决定; (b) 程序的正确性不能依赖block的执行顺序。这条限制是scalable programming model对于程序提出要求。
 
 \begin{capstone}{prob 2.9（FROM-SCRATCH）：SAXPY \hfill {\footnotesize\ttfamily cuda/m2\_first\_kernel/saxpy.cu}}
 在 \texttt{m2\_first\_kernel/} 下写出完整的 CUDA 程序 \texttt{saxpy.cu}，实现 $y \leftarrow 2.0 \cdot x + y$（单精度）。要求如下:
@@ -398,7 +401,7 @@ Guide 2.3.1--2.3.2、1.2.2.2。3.3、3.5 要用 shared memory，用法见 Guide 
 设 \texttt{blockDim = (8, 8, 1)}。
 \begin{enumerate}[label=(\alph*)]
   \item \texttt{threadIdx = (3, 5, 0)} 的线性编号是多少？它在第几个 warp、warp 内第几个 lane？
-  答：线性编号为29，它在第0个warp内的第29个lane。
+  答：线性编号为43，它在idx=1的warp内idx=11的lane上。
   \item 这个 block 一共占多少个 warp？
   答：一共占用了2个warp
   \item 若 \texttt{blockDim = (33, 1, 1)}，占几个 warp？这样配置浪费在哪里？
@@ -444,7 +447,7 @@ make run/m3_simt/02_sync_matters
 \prob{3.4}{CONCEPT}
 \texttt{\_\_syncthreads} 只能同步本 block 内的 threads，那需要全 grid 同步时，标准做法是什么？
 
-答：标准做法是通过main memory，即GPU的显存来传递数据，并调用\texttt{cudaDeviceSynchronize}来确保同步性。
+答：标准做法是通过main memory，即GPU的显存来传递数据，并调用\texttt{cudaDeviceSynchronize}，用kernel之间的边界来确保同步性。
 
 \begin{capstone}{prob 3.5（FROM-SCRATCH）：block 内归约 \hfill {\footnotesize\ttfamily cuda/m3\_simt/03\_reduce.cu}}
 在 \texttt{03\_reduce.cu} 里从零实现两个求和归约 kernel（判测与计时的代码已经写好）。两个 kernel 的 contract 见文件头。PASS 后，试解释实测性能差距的原因。
@@ -483,11 +486,11 @@ Guide 2.3.3--2.3.5、2.3.7、1.2.3。
 空间 & 谁可见 & 生命周期 & 片上 / 片外 & 谁管理 \\
 \midrule
 register & 单个线程 & 线程 & 片上 & 编译器 \\
-local & 单个线程 & 线程 & 片外 & 用户 \\
+local & 单个线程 & 线程 & 片外 & 编译器 \\
 shared & 单个Block & 线程 & 片上 & 用户 \\
 global & 整个grid & 应用程序 & 片外 & 用户 \\
-constant & 整个grid & 应用程序 & 偏外 & 编译器 \\
-L1 / L2 cache & 单个线程 & 线程 & 片上 & 编译器 \\
+constant & 整个grid & 应用程序 & 片外 & 用户 \\
+L1 / L2 cache & 单个线程 & 线程 & 片上 & 硬件 \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -510,8 +513,8 @@ make run/m4_memory/02_constant_coeff
 
 结果会包含两个版本的耗时（差距可能极小，甚至测不出来性能收益——想想为什么），回答 constant cache 真正的优势在哪种访问模式。
 
-答：性能差别测不出来是因为constant类型的数组也是存在globa memory里面的，读取速率没有发生变化。constant cache的真正优势在于多个kernel都需要访问这个
-常数数组的时候可以避免重复搬运常数，让它常驻显存。
+答：性能差别测不出来是因为constant类型的数组也是存在globa memory里面的，读取速率没有发生变化。constant cache的真正优势在于多个warp都需要访问这个
+常数数组的时候，constant会在第一次被调用时加载到shared memory中，后续的warp再访问就会走shared memory带宽，远高于显存带宽。
 
 \prob{4.4}{CONCEPT}
 判断对错，可以顺带补一句理由。
@@ -647,7 +650,7 @@ make run/m5_async/01_timing_trap
   \item kernel 启动后，host 代码立刻继续往下执行。
   答：正确。只要CPU中还有别的任务不需要等待这个kernel进行sync，就可以继续执行别的操作，不用等kernel跑完。
   \item unified memory 下，CPU 访问一页正被 GPU 占用的内存，会触发缺页与页迁移。
-  答：错误。unified memory允许CPU和GPU同时访问某一块内存空间，只要没有因为程序中的同步等操作导致lock。
+  答：正确。内存页被GPU锁住时CPU无法访问。
 \end{enumerate}
 
 \begin{lookback}
@@ -669,8 +672,11 @@ Guide 1.2.2.3（必读，篇幅不长）、2.4.1--2.4.6（浏览）、2.2（知�
 判断对错，可以顺带补一句理由。
 \begin{enumerate}[label=(\alph*)]
   \item tile 是显存里的一块可变区域，kernel 通过指针直接改写它。
+  答：错误。tile时不可变的，任何改动操作都会生成一个新的tile；题干的描述是array的性质。
   \item 对 tile 的一次运算（如两个 tile 相加）由编译器映射到 block 内的多个线程上执行。
+  答；正确。
   \item tile 模型与 SIMT 模型互斥，一个 CUDA 程序只能选一种。
+  答：错误。tile和SIMT可以共存于一个CUDA程序中。它们在kenrel层级的编程上是互斥的，一个kernel只能选择一种编程方式。
 \end{enumerate}
 
 \prob{6.2}{CONCEPT}
@@ -700,14 +706,15 @@ def vec_add(a, b, c, TILE: ct.Constant[int]):
 \midrule
 并行单位 & block 里的 thread & block & \\
 编号 & \texttt{blockIdx} / \texttt{threadIdx} &  & \\
-数据分工 & 线程用全局下标来划分数据 &  & \\
-边界处理 & \texttt{if} 判断 &  & \\
+数据分工 & 线程用全局下标来划分数据 & 用户划分tile，cuTile会自动编译将tile分给不同的block执行 & \\
+边界处理 & \texttt{if} 判断 & tile在编译时会自动按照用户指定的方法处理边界 & \\
 \bottomrule
 \end{tabular}
 \end{center}
 
 \prob{6.3}{CONCEPT}
 仍看上面这段代码。(a)~“每个线程对应哪个/些元素”由谁决定？(b)~列出一些在 CUDA SIMT 版向量加法里一定会出现、这里完全没体现出的概念。
+答：(a) 由cuTile编译器决定；(b)~threadIdx
 
 \begin{lookback}
 tile 并非某个 DSL 的发明。NVIDIA 自己把它与 SIMT 并列写进了 Guide 正文，这本身就说明它是一类稳定的编程方式，而不是一次工具选型。
