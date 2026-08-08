@@ -752,6 +752,8 @@ uv run pytest tests/test_fused_op.py
 
 改完回答——与 Module 2 里改 CUDA kernel 相比，这次的改动主要集中在 kernel 的什么部分？主体代码为什么一行都不用动？
 
+答：主要集中在 kernel 中的计算逻辑。主体代码不用动是因为确定好BLOCK_SIZE之后，底层的数据搬运和线程划分是由triton编译器自动完成的，用户只负责配置。
+
 \prob{7.3}{FILL-IN}[kernels/tilelang\_scale\_add.py]
 请填空：\texttt{kernels/tilelang\_scale\_add.py} ，具体要求见代码注释。测试命令：
 
@@ -771,6 +773,8 @@ uv run pytest tests/test_tilelang.py -k copy2d
 
 填完想一想：2.6 的四个空——行号、列号、边界保护、grid 尺寸——哪些在这里还有对应？没有对应的那个去哪了？
 
+答：行号、列号、grid 尺寸还有对应，边界保护被交给TileLang编译器自己处理了。
+
 \prob{7.5}{CONCEPT}
 补全下表，每个空填“用户”或“编译器”（二者都涉及的要写清楚各自的范围）。
 
@@ -779,10 +783,10 @@ uv run pytest tests/test_tilelang.py -k copy2d
 \toprule
 谁负责 & CUDA SIMT & cuTile & Triton & TileLang \\
 \midrule
-线程到数据的映射 & 用户 & & & \\
-边界处理 & 用户 & & & \\
-tile / block 尺寸的选择 & 用户 & & & \\
-block 内同步 & 用户 & & & \\
+线程到数据的映射 & 用户 & 编译器 & 编译器 & 用户可以选择自己管理，也可以选择交给编译器管理 \\
+边界处理 & 用户 & 用户可以定义越界的处理方式，编译器负责越界的判定和处理& 编译器 & 编译器 \\
+tile / block 尺寸的选择 & 用户 & 用户 & 用户 & 用户\\
+block 内同步 & 用户 & 编译器 & 编译器 & 当用户选择自己控制线程时需要自己管理，否则由编译器管理 \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -796,6 +800,8 @@ uv run pytest tests/test_tilelang.py -k matmul
 \end{lstlisting}
 
 填完回答——这五个空涉及到了 shared memory、寄存器 tile、流水，而 Triton 版 matmul（Bonus 的 \texttt{kernels/matmul\_triton.py}）并未被显式指定，为什么？
+
+答：因为TileLang支持对于tile进行存储空间分配和计算的并行方式进行定义，而Triton语言中用户只能定义tile，memory分配和具体的SIMT执行全部由编译器管理。
 
 \begin{capstone}{prob 7.7（FROM-SCRATCH）：softmax in TileLang \hfill {\footnotesize\ttfamily kernels/tilelang\_softmax.py}}
 在 \texttt{kernels/tilelang\_softmax.py} 里从零实现行 softmax，具体要求见文件开头的 docstring。
@@ -833,9 +839,13 @@ Guide 1.3 全章（必读）、2.1.1、2.7（浏览）。
 判断对错，可以顺带补一句理由。
 \begin{enumerate}[label=(\alph*)]
   \item PTX 是 GPU 直接执行的机器码。
+  答：错误。PTX是一种汇编程序，需要在GPU执行时再编译为对应GPU的binary code
   \item 只嵌入了 \texttt{sm\_70} SASS 的可执行文件，能在 compute capability 9.0 的卡上运行。
+  答：错误。sm_70与compute capability 9.0的卡不兼容，同时文件中缺乏ptx，因此无法编译出可兼容的binary code
   \item 一个 fatbin 可以同时携带多个架构的 SASS 和 PTX。
+  答：正确。
   \item JIT 编译由驱动在运行时完成。
+  答：正确。
 \end{enumerate}
 
 \prob[Optional]{8.2}{EXPERIMENT}[cuda/m0\_env/01\_hello.cu]
@@ -843,11 +853,14 @@ Guide 1.3 全章（必读）、2.1.1、2.7（浏览）。
 
 (a)~生成只含 \texttt{sm\_90} SASS 的可执行文件并运行（如果你的卡本身就是 compute capability 9.0，先把 \texttt{ARCH\_HIGH} 调成 100 或更高再 make），记录报错信息。
 
+
 \begin{lstlisting}
 cd assignment01/cuda
 make sassonly/m0_env/01_hello
 ./bin/m0_env/01_hello_sassonly
 \end{lstlisting}
+
+答：报错信息为 CUDA error cudaErrorNoKernelImageForDevice at m0_env/01_hello.cu:11: no kernel image is available for execution on the device
 
 (b)~生成只含 \texttt{compute\_75} PTX 的版本（CUDA 13 起 \texttt{compute\_70} 已被移除，Makefile 默认取 75）并运行。能正常运行吗？PTX 是在什么时候、由谁编译成这块卡的机器码的？
 
@@ -857,8 +870,12 @@ make ptxonly/m0_env/01_hello
 ./bin/m0_env/01_hello_ptxonly
 \end{lstlisting}
 
+答：程序可以正常运行。PTX是在程序加载的时候由设备驱动器进行JIT编译变成机器码的。
+
 \prob[Optional]{8.3}{CONCEPT}
 请简单说明 Runtime API 与 Driver API 各自的定位。\texttt{cudaMalloc} 属于哪个？
+
+答：Runtime API是留给用户方便编程的接口，而Driver API是暴露给NVIDIA DRIVER的API接口。\texttt{cudaMalloc} 属于前者。
 
 \begin{lookback}
 Module 0 里那个“能跑就行”的 hello，现在被拆开重新看过：源码经 nvcc 分成 host 和 device 两路，device 端产出 PTX 与 SASS，一并打包进 fatbin；运行时 driver 再从中挑选合适的版本，或者对 PTX 做 JIT。
