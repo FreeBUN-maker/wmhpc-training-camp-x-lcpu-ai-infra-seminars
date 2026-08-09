@@ -2,9 +2,13 @@
 % 编译：xelatex -interaction=nonstopmode assignment01.tex（跑两遍）
 \documentclass[11pt,a4paper,fontset=none]{ctexart}
 
-\setCJKmainfont[BoldFont={Noto Serif CJK SC Bold}]{Noto Serif CJK SC}
-\setCJKsansfont[BoldFont={Noto Sans CJK SC Bold}]{Noto Sans CJK SC}
-\setCJKmonofont{Noto Sans CJK SC}
+\setCJKmainfont[
+  BoldFont={SimHei},
+  ItalicFont={KaiTi},
+  SlantedFont={KaiTi}
+]{SimSun}
+\setCJKsansfont[BoldFont={SimHei}]{Microsoft YaHei}
+\setCJKmonofont{SimSun}
 \usepackage{geometry}
 \geometry{margin=2.3cm}
 
@@ -55,6 +59,13 @@
   title={Editor's Note}, fonttitle=\bfseries\sffamily\small,
   coltitle=black, attach title to upper={\quad},
   before upper app={\setlength{\parskip}{0.5em}}}
+
+% 答案框
+\newtcolorbox{answerbox}{enhanced, breakable,
+  colback=white, colframe=accent!70, boxrule=0.6pt, arc=1.2pt,
+  left=6pt, right=6pt, top=4pt, bottom=4pt,
+  before upper={\setlength{\parskip}{0.35em}}}
+\NewDocumentCommand{\answerline}{+m}{\begin{answerbox}\textbf{答：}#1\end{answerbox}}
 
 % 题目标题：\prob{编号}{TYPE}；选做题写 \prob[Optional]{编号}{TYPE}，必做不标注；
 % 题目主要涉及的文件用末尾的可选参数标在标题行右侧：\prob{编号}{TYPE}[相对路径]
@@ -142,7 +153,7 @@ make run/m0_env/02_device_query
 \toprule
 项目 & 你的卡 \\
 \midrule
-型号 / compute capability & NVIDIA GeForce RTX 5090\\
+型号 / compute capability & NVIDIA GeForce RTX 5090 / \\
 SM 数量 & 170\\
 warp 大小 & 32 \\
 shared memory / block & 49152\\
@@ -171,19 +182,19 @@ Guide 1.1、1.2.1--1.2.2；LCPU 讲义\footnote{\url{https://github.com/interest
 判断对错，可以顺带补一句理由。
 \begin{enumerate}[label=(\alph*)]
   \item 一块标称 100 TFLOPS 的 GPU，执行单条指令的延迟一定低于 5 GHz 的 CPU。
-  答：错误。GPU的算力是所有SIMT处理核算力的加总，单核性能不一定比得上CPU的单核。
+  \answerline{错误。GPU的算力是所有SIMT处理核算力的加总，单核性能不一定比得上CPU的单核。}
   \item HBM 的“高带宽”指大块连续访问时的吞吐，零散的随机访问达不到标称值。
-  答：正确。零散的访问地址可能导致映射到HBM中的物理地址非常集中，无法利用HBM内部的并行度，用不满带宽。
+  \answerline{正确。零散的访问地址可能导致映射到HBM中的物理地址非常集中，无法利用HBM内部的并行度，用不满带宽。}
   \item 严格串行的迭代算法（每步依赖上一步的结果），即使换一块算力更强的 GPU 也快不了多少。
-  答：正确。严格的串行算法无法通过SIMT的方式来进行访存和计算的overlap，因此本质上是用单个core进行串行计算，而GPU的算力提升一般来源于核心数量的提升，单核性能提升不显著。
+  \answerline{正确。严格的串行算法无法通过SIMT的方式来进行访存和计算的overlap，因此本质上是用单个core进行串行计算，而GPU的算力提升一般来源于核心数量的提升，单核性能提升不显著。}
   \item “算力 1000 TFLOPS”意味着每次运算的延迟是 $10^{-15}$ 秒。
-  答：错误。算力是一个吞吐上的概念，1000TFLOPS也可能是用 $10^{-13}$ 秒完成100OPS的计算。
+  \answerline{错误。算力是一个吞吐上的概念，1000TFLOPS也可能是用 $10^{-13}$ 秒完成100OPS的计算。}
 \end{enumerate}
 
 \prob{1.2}{CONCEPT}
 Session 1 讲座里提过“N 方过百万”这个例子。总计算量 $10^{12}$ FLOP 在当代 GPU 上的运算时间大概是毫秒级，那为什么一个严格在线的串行算法仍然做不到几秒内跑完？（从“延迟”和“吞吐”的角度考虑）
-答：严格串行的算法由于数据依赖无法并行执行，此时吞吐不能靠提高计算的并行度来提高，而是严格与延迟成反比，因此在GPU这种单核能力弱、靠提高并发度来
-提高算力的平台上，无法达到很高的处理速度。
+\answerline{严格串行的算法由于数据依赖无法并行执行，此时吞吐不能靠提高计算的并行度来提高，而是严格与延迟成反比，因此在GPU这种单核能力弱、靠提高并发度来
+提高算力的平台上，无法达到很高的处理速度。}
 
 \prob{1.3}{CONCEPT}
 补全下表（thread 一行已填好作为示例）
@@ -194,8 +205,8 @@ Session 1 讲座里提过“N 方过百万”这个例子。总计算量 $10^{12
 执行层次 & 软件含义 & 对应硬件 & 直接可用的存储 & 同步与通信手段 \\
 \midrule
 thread & kernel 的最小执行单位 & 计算单元上的一个 lane & 自己的寄存器 & （自身天然有序） \\
-warp & GPU调度thread的最小单元 & SM中的一个分区 & L0, L1 (不含shared memory) & warp之间的通讯通过L0, L1进行，通过CUDA提供的warp_primitive调用 \\
-block / CTA & thread协作的基本单位 & SM & L0, L1 (含shared memory) & 使用__syncthreads同步机制，通信通过shared memory进行 \\
+warp & GPU调度thread的最小单元 & SM中的一个分区 & L0, L1 (不含shared memory) & warp之间的通讯通过L0, L1进行，通过CUDA提供的\texttt{warp\_primitive}调用 \\
+block / CTA & thread协作的基本单位 & SM & L0, L1 (含shared memory) & 使用\texttt{\_\_syncthreads}同步机制，通信通过shared memory进行 \\
 grid & 一次函数调用中启用的顶层数据结构，由若干block组成 & GPU & 全局 & 通过main memory传递数据 \\
 \bottomrule
 \end{tabular}
@@ -203,8 +214,8 @@ grid & 一次函数调用中启用的顶层数据结构，由若干block组成 &
 
 \prob{1.4}{CONCEPT}
 SIMD 与 SIMT 的区别？另：判断正误——Nvidia GPU 在 Volta 之后每个线程有独立的 program counter，所以 branch divergence 不再有性能代价。
-答：SIMD与SIMT的区别在于thread和pc的数量，SIMD中是一个thread, 一个pc同时对多个data进行同一种操作，而SIMT则是同时调度多个thread的执行，每个thread有自己的pc并且可以单独执行。
-判断正误：错误。GPU中同一个warp内thread的路径不同时会退化为串行执行，依次执行每个branch并mask掉不经过这个branch的thread，导致部分thread挂起，对应的硬件空转，降低硬件利用率
+\answerline{SIMD与SIMT的区别在于thread和pc的数量，SIMD中是一个thread, 一个pc同时对多个data进行同一种操作，而SIMT则是同时调度多个thread的执行，每个thread有自己的pc并且可以单独执行。
+判断正误：错误。GPU中同一个warp内thread的路径不同时会退化为串行执行，依次执行每个branch并mask掉不经过这个branch的thread，导致部分thread挂起，对应的硬件空转，降低硬件利用率}
 \prob{1.5}{EXPERIMENT}[cuda/m1\_why\_gpu/01\_scaling.cu]
 同一个向量加法，四种配置各跑一遍。
 
@@ -228,8 +239,8 @@ GPU 铺满 grid & 0.023 & 0.01 \\
 \end{tabular}
 \end{center}
 
-答：(a) GPU的单核能力弱于CPU，因为CPU中有分支预测以及prefetch等手段来给程序喂数据，降低流水线stall的概率，而GPU中没有这种技术，导致单核计算性能明显更弱；
-(b) GPU加速计算靠的是多个处理单元并行计算来摊薄总的访存延时
+\answerline{(a) GPU的单核能力弱于CPU，因为CPU中有分支预测以及prefetch等手段来给程序喂数据，降低流水线stall的概率，而GPU中没有这种技术，导致单核计算性能明显更弱；
+(b) GPU加速计算靠的是多个处理单元并行计算来摊薄总的访存延时}
 
 \prob[Optional]{1.6}{FROM-SCRATCH}[kernels/simt\_sim.py]
 SIMT Simulator —— 写一个 warp 的执行模拟器：32 个 lane、共享控制流、带 mask 的分支执行与汇合。请在 \texttt{kernels/simt\_sim.py} 内完成（docstring 里面有具体实现要求）。工作量大概是 50 行以内的 Python。不需要 GPU。注：本题为 Module 3 的实验结果提供理论对照。判测命令如下：
@@ -266,15 +277,15 @@ make run/m2_first_kernel/01_vector_add
 为下列五个场景选择正确的修饰符（如 \texttt{\_\_global\_\_} 等）。
 \begin{enumerate}[label=(\alph*)]
   \item 在 GPU 上执行、由 CPU 侧启动的 kernel 函数。
-  答: __global__
+  \answerline{\texttt{\_\_global\_\_}}
   \item 只会被 kernel 调用的辅助函数。
-  答: __device__
+  \answerline{\texttt{\_\_device\_\_}}
   \item host 和 device 代码都要调用的小工具函数。
-  答: __host__ __device__
+  \answerline{\texttt{\_\_host\_\_ \_\_device\_\_}}
   \item 整个 kernel 运行期间不变、所有线程都要读的系数表。
-  答: __constant__
+  \answerline{\texttt{\_\_constant\_\_}}
   \item block 内线程共享的暂存数组。
-  答: __shared__
+  \answerline{\texttt{\_\_shared\_\_}}
 \end{enumerate}
 
 \prob{2.3}{MODIFY}[cuda/m2\_first\_kernel/02\_vector\_add\_um.cu]
@@ -303,19 +314,19 @@ rm bin/m2_first_kernel/02_vector_add_um
 
 然后请回答如下问题：(a)~kernel 启动之后、CPU 读结果之前，为什么必须有一次同步？在原先的版本里这次同步发生在哪个调用里？(b)~对比两版“搬运 + kernel + 读回”的耗时，分析差距的原因（谁快谁慢都有可能，与使用的卡有关）。
 
-答：(a) 为了保证CPU读数据的时候所有thread都已经执行完，CPU能得到正确的结果。原先的版本中这个同步发生在CUDA_CHECK_KERNEL()这个函数里调用cudaDeviceSynchronize()的这个函数。
+\answerline{(a) 为了保证CPU读数据的时候所有thread都已经执行完，CPU能得到正确的结果。原先的版本中这个同步发生在\texttt{CUDA\_CHECK\_KERNEL()}这个函数里调用cudaDeviceSynchronize()的这个函数。
 (b) Unified memory版本更快。用的是5090的卡。这个更快的原因可能是用Unified memory模式的时候，GPU需要的数据按页迁移，而不是像原来一样调用一个同步的memcpy函数，
-这让cuda内部有将host到device的数据搬运和gpu的计算任务进行overlap的机会，从而减少了整体的延时。
+这让cuda内部有将host到device的数据搬运和gpu的计算任务进行overlap的机会，从而减少了整体的延时。}
 
 \prob{2.4}{CONCEPT}
 判断对错，可以顺带补一句理由。
 \begin{enumerate}[label=(\alph*)]
   \item \texttt{vectorAdd<<<...>>>(...)} 这条语句返回时，kernel 一定已经执行完毕。
-  答：错误。这条语句返回的时候只是cpu已经拉起了一个Kernel，并不一定执行完毕。
+  \answerline{错误。这条语句返回的时候只是cpu已经拉起了一个Kernel，并不一定执行完毕。}
   \item 同一个 stream 里，\texttt{cudaMemcpy}（device 到 host）会等它前面的 kernel 全部完成后才开始拷贝。
-  答：正确。同一个stream中不同kernel提交的各种操作都是严格按序执行的。
+  \answerline{正确。同一个stream中不同kernel提交的各种操作都是严格按序执行的。}
   \item kernel 内部的非法访存，会在启动语句处同步地报出来。
-  答：错误。kernel内部的报错会等执行它的线程运行到非法操作的时候报出。
+  \answerline{错误。kernel内部的报错会等执行它的线程运行到非法操作的时候报出。}
 \end{enumerate}
 
 \prob{2.5}{DEBUG}[cuda/m2\_first\_kernel/03\_bug\_launch.cu]
@@ -326,9 +337,9 @@ cd assignment01/cuda
 make run/m2_first_kernel/03_bug_launch
 \end{lstlisting}
 
-答：出bug的原因在于给每个block开了过高的线程数。实验环境的GPU是5090，最大线程数/SM为1536，而原程序开了2048，这意味着一个block不能被调度到一个SM上执行.
-之所以原来不加CHECK_CUDA_KERNEL()不会有任何反映，是因为程序中没有检查cuda kernel的错误，只有进行memcpy操作的时候才会暴露出错误。
-只来源于评测程序中发现结果不对。
+\answerline{出bug的原因在于给每个block开了过高的线程数。实验环境的GPU是5090，最大线程数/block为1024，而原程序开了2048，因此被驱动识别为无效参数.
+之所以原来不加\texttt{CHECK\_CUDA\_KERNEL()}不会有任何反映，是因为程序中没有检查cuda kernel的错误，只有进行memcpy操作的时候才会暴露出错误。
+只来源于评测程序中发现结果不对。}
 
 \prob{2.6}{FILL-IN}[cuda/m2\_first\_kernel/04\_matrix\_add.cu]
 \texttt{04\_matrix\_add.cu} 用二维的 block 和 grid 处理 $1000 \times 700$ 的矩阵，请填空实现矩阵加法。测试命令：
@@ -348,8 +359,8 @@ make run/m2_first_kernel/05_grid_stride
 
 然后请回答——这种写法的价值在哪里？launch 只有 16384 个线程时，性能上要付出什么代价？
 
-答：这种写法的价值在于可以将一个Kernel需要使用的算力与其问题规模解耦，这样就可以自由地为不同的kernel分配算力。这样做在性能上付出的代价是用的算力定死了，
-对不同规模的问题会使用同样的算力，可能导致大规模问题处理很慢。
+\answerline{这种写法的价值在于可以将一个Kernel需要使用的算力与其问题规模解耦，这样就可以自由地为不同的kernel分配算力。这样做在性能上付出的代价是用的算力定死了，
+对不同规模的问题会使用同样的算力，可能导致大规模问题处理很慢。}
 
 \prob{2.8}{EXPERIMENT}[cuda/m2\_first\_kernel/06\_whoami.cu]
 运行下面的程序两三次，观察 16 个 block 打印输出的先后。
@@ -361,7 +372,7 @@ make run/m2_first_kernel/06_whoami
 
 (a)~顺序由谁决定？(b)~程序的正确性可以依赖 block 的执行顺序吗？这条限制和 Guide 1.1 说的 scalable programming model 有什么关系？
 
-答：(a) 由每个block被调度执行的顺序决定; (b) 程序的正确性不能依赖block的执行顺序。这条限制是scalable programming model对于程序提出要求。
+\answerline{(a) 由每个block被调度执行的顺序决定; (b) 程序的正确性不能依赖block的执行顺序。这条限制是scalable programming model对于程序提出要求。}
 
 \begin{capstone}{prob 2.9（FROM-SCRATCH）：SAXPY \hfill {\footnotesize\ttfamily cuda/m2\_first\_kernel/saxpy.cu}}
 在 \texttt{m2\_first\_kernel/} 下写出完整的 CUDA 程序 \texttt{saxpy.cu}，实现 $y \leftarrow 2.0 \cdot x + y$（单精度）。要求如下:
@@ -401,11 +412,11 @@ Guide 2.3.1--2.3.2、1.2.2.2。3.3、3.5 要用 shared memory，用法见 Guide 
 设 \texttt{blockDim = (8, 8, 1)}。
 \begin{enumerate}[label=(\alph*)]
   \item \texttt{threadIdx = (3, 5, 0)} 的线性编号是多少？它在第几个 warp、warp 内第几个 lane？
-  答：线性编号为43，它在idx=1的warp内idx=11的lane上。
+  \answerline{线性编号为43，它在idx=1的warp内idx=11的lane上。}
   \item 这个 block 一共占多少个 warp？
-  答：一共占用了2个warp
+  \answerline{一共占用了2个warp}
   \item 若 \texttt{blockDim = (33, 1, 1)}，占几个 warp？这样配置浪费在哪里？
-  答：一共占用两个warp。这样配置的话idx=1的warp实际上只有1个thread在工作，但是依然占用了一个warp，浪费了另外31个thread的计算资源。
+  \answerline{一共占用两个warp。这样配置的话idx=1的warp实际上只有1个thread在工作，但是依然占用了一个warp，浪费了另外31个thread的计算资源。}
 \end{enumerate}
 
 \prob{3.2}{EXPERIMENT}[cuda/m3\_simt/01\_divergence.cu]
@@ -425,11 +436,11 @@ warp 内分支 (tid % 2)    :    0.373 ms
 比值: 1.95
 \end{lstlisting}
 
-答: 按照warp边界对齐划分分支的kernel运行会快一些，运行时间大约是另一个kernel的一半。
+\answerline{按照warp边界对齐划分分支的kernel运行会快一些，运行时间大约是另一个kernel的一半。
 这是因为它的warp内部没有线程束分化，因此每个warp的执行时间都是等于一个thread的运行时间；而按照threadIdx奇偶性
 划分分支的kernel每个warp内部都会有属于两个branch的thread，因此每个warp都需要经历两个branch，时间翻倍。实测结果与此略有偏差，可能是因为每个kernel内部的所有thread不是完全同步地执行的，因此时间上略有偏差。
 
-如果两个分支的计算量一大一小，按照thread编号奇偶划分的kernel运行时间由两个分支的总计算量决定，而按照warp边界对齐分的kernel运行时间由计算量较大的一个分支的运行时间决定。
+如果两个分支的计算量一大一小，按照thread编号奇偶划分的kernel运行时间由两个分支的总计算量决定，而按照warp边界对齐分的kernel运行时间由计算量较大的一个分支的运行时间决定。}
 
 \prob{3.3}{EXPERIMENT}[cuda/m3\_simt/02\_sync\_matters.cu]
 \texttt{02\_sync\_matters.cu} 让每个 block 用 shared memory 把自己的 256 个元素倒序。请按文件开头的注释内容进行实验。
@@ -440,14 +451,14 @@ make run/m3_simt/02_sync_matters
 \end{lstlisting}
 
 (a)~为什么注释掉 sync 后代码不能正确地运行？(b)~(Optional) 注释掉 sync 后，翻转后的数组错的位置比较随机，但是有些位置一直是对的，试解释原因。（tip: 算一算 $t$ 与 $255-t$ 有没有可能落在同一个 warp）
-答：(a)因为thread之间的执行顺序是无法保证的，去掉sync代码之后可能某个thread读buf的时候它需要的数据还没有被另一个thread写入。
+\answerline{(a)因为thread之间的执行顺序是无法保证的，去掉sync代码之后可能某个thread读buf的时候它需要的数据还没有被另一个thread写入。
 (b)这个例子中没有某个warp需要的数据传输在warp内部的情况，所有warp需要的数据都是另一个warp写入shared memory的。但是因为固定的硬件对于warp的调度顺序有某种固定倾向，因此某些warp之间的执行顺序相对固定，所以
-对应的位置表现出稳定的正确性。
+对应的位置表现出稳定的正确性。}
 
 \prob{3.4}{CONCEPT}
 \texttt{\_\_syncthreads} 只能同步本 block 内的 threads，那需要全 grid 同步时，标准做法是什么？
 
-答：标准做法是通过main memory，即GPU的显存来传递数据，并调用\texttt{cudaDeviceSynchronize}，用kernel之间的边界来确保同步性。
+\answerline{标准做法是通过main memory，即GPU的显存来传递数据，并调用\texttt{cudaDeviceSynchronize}，用kernel之间的边界来确保同步性。}
 
 \begin{capstone}{prob 3.5（FROM-SCRATCH）：block 内归约 \hfill {\footnotesize\ttfamily cuda/m3\_simt/03\_reduce.cu}}
 在 \texttt{03\_reduce.cu} 里从零实现两个求和归约 kernel（判测与计时的代码已经写好）。两个 kernel 的 contract 见文件头。PASS 后，试解释实测性能差距的原因。
@@ -487,7 +498,7 @@ Guide 2.3.3--2.3.5、2.3.7、1.2.3。
 \midrule
 register & 单个线程 & 线程 & 片上 & 编译器 \\
 local & 单个线程 & 线程 & 片外 & 编译器 \\
-shared & 单个Block & 线程 & 片上 & 用户 \\
+shared & 单个Block & 线程块 & 片上 & 用户 \\
 global & 整个grid & 应用程序 & 片外 & 用户 \\
 constant & 整个grid & 应用程序 & 片外 & 用户 \\
 L1 / L2 cache & 单个线程 & 线程 & 片上 & 硬件 \\
@@ -513,16 +524,16 @@ make run/m4_memory/02_constant_coeff
 
 结果会包含两个版本的耗时（差距可能极小，甚至测不出来性能收益——想想为什么），回答 constant cache 真正的优势在哪种访问模式。
 
-答：性能差别测不出来是因为constant类型的数组也是存在globa memory里面的，读取速率没有发生变化。constant cache的真正优势在于多个warp都需要访问这个
-常数数组的时候，constant会在第一次被调用时加载到shared memory中，后续的warp再访问就会走shared memory带宽，远高于显存带宽。
+\answerline{性能差别测不出来是因为constant类型的数组也是存在globa memory里面的，读取速率没有发生变化。constant cache的真正优势在于多个warp都需要访问这个
+常数数组的时候，constant会在第一次被调用时加载到shared memory中，后续的warp再访问就会走shared memory带宽，远高于显存带宽。}
 
 \prob{4.4}{CONCEPT}
 判断对错，可以顺带补一句理由。
 \begin{enumerate}[label=(\alph*)]
   \item local memory 的“local”指作用域私有，它实际上在片外显存里。
-  答：正确。CUDA Programming Guide的2.3.3.4章节第一段就是如此描述的。
+  \answerline{正确。CUDA Programming Guide的2.3.3.4章节第一段就是如此描述的。}
   \item 对数组用运行期才知道的下标做索引，可能迫使它被放进 local memory。
-  答：正确。CUDA对于无法在编译时确定索引的数组可能会将其放到Local memory中，因为无法直接为它分配thread的regfile资源。
+  \answerline{正确。CUDA对于无法在编译时确定索引的数组可能会将其放到Local memory中，因为无法直接为它分配thread的regfile资源。}
 \end{enumerate}
 
 \prob{4.5}{FILL-IN}[cuda/m4\_memory/03\_histogram.cu]
@@ -543,9 +554,9 @@ make run/m4_memory/04_histogram_priv
 
 测试结果包含与 naive 实现相比较的耗时、吞吐。试解释提速来自哪里。
 
-答：提速来自于所有thread进行atomic操作时的访存带宽变大了。进行了修改之后，在每个thread向shared memory中的hist副本进行
+\answerline{提速来自于所有thread进行atomic操作时的访存带宽变大了。进行了修改之后，在每个thread向shared memory中的hist副本进行
 累加操作时，所有thread的访存带宽大约是这个kernel享有的所有SM与shared memory的带宽之和，这远远大于每个thread都直接访问global memory中的hist时享有的
-显存带宽。
+显存带宽。}
 
 \prob{4.7}{EXPERIMENT}[cuda/m4\_memory/05\_bandwidth.cu]
 运行实验，并根据实验数据填表。
@@ -567,10 +578,10 @@ GB/s & 1891.9 & 1196.6 & 741.0 & 587.2 & 1652.6 & 867.2 \\
 \end{tabular}
 \end{center}
 
-答：当stride <= 8时，kernel体现出的global memory访问带宽持续下降，这是因为每个thread需要4B数据，而global memory的访问粒度是
+\answerline{当stride <= 8时，kernel体现出的global memory访问带宽持续下降，这是因为每个thread需要4B数据，而global memory的访问粒度是
 32B，当stride增大的时候，memory access coalescing的效率逐渐降低，因此带宽逐渐降低。而最后两组实验的带宽突然变大，这个其实是因为给出
-的评测样例n刚好为2的幂，strided_copy实际上只访问了in的一个子集，当stride变大的时候cache hit rate会上升，最后两组实验里有很多的memory access都是走的片上
-L2 cache，并不是访问global memory的，带宽因此变大。
+的评测样例n刚好为2的幂，\texttt{strided\_copy}实际上只访问了in的一个子集，当stride变大的时候cache hit rate会上升，最后两组实验里有很多的memory access都是走的片上
+L2 cache，并不是访问global memory的，带宽因此变大。}
 
 \prob{4.8}{EXPERIMENT}[cuda/m4\_memory/06\_occupancy.cu]
 \texttt{06\_occupancy.cu}，详细内容见相关文件。实验命令如下：
@@ -585,32 +596,24 @@ make run/m4_memory/06_occupancy
 \begin{center}\small
 \begin{tabular}{@{}lcccccc@{}}
 \toprule
-shared memory / block (KB) & & & & & & \\
-理论驻留 block / SM & & & & & & \\
-occupancy & & & & & & \\
-实测带宽 (GB/s) & & & & & & \\
+shared memory / block (KB) & 0.0 & 13.2 & 15.0 & 18.0 & 29.0 & 55.0 \\
+理论驻留 block / SM & 6 & 6 & 6 & 5 & 3 & 1 \\
+occupancy & 100.0\% & 100.0\% & 100.0\% & 83.3\% & 50.0\% & 16.7\% \\
+实测带宽 (GB/s) & 1567.9 & 1569.7 & 1570.6 & 1574.4 & 1577.7 & 813.2 \\
 \bottomrule
 \end{tabular}
 \end{center}
-
-shared/block   理论 block/SM  occupancy   实测带宽
-     0.0 KB          6          100.0%     1567.9 GB/s
-    13.2 KB          6          100.0%     1569.7 GB/s
-    15.0 KB          6          100.0%     1570.6 GB/s
-    18.0 KB          5           83.3%     1574.4 GB/s
-    29.0 KB          3           50.0%     1577.7 GB/s
-    55.0 KB          1           16.7%      813.2 GB/s
 
 请回答：(a)~用程序开头打印的“shared memory / SM”和“最大常驻线程 / SM”，手算其中一个的驻留 block 数和 occupancy，和 API 的结果对照。
 (b)~带宽为什么随 occupancy 下降？用“延迟隐藏需要足够多的常驻 warp”组织你的解释。
 (c)~表中带宽随 occupancy 单调下降，但明显不成正比——从 100\% 到 75\% 带宽掉了多少？从 37.5\% 到 12.5\% 又掉了多少？试解释这个差别。
 
-答：(a) 当shared/block = 13.2 KB时，根据100KB/SM的shared memory总容量计算，一个SM上可以容纳7个block。但是由于SM上最大的驻留thread数量为1536 = 256 * 6，且kernel launch的blockDim参数为256，
+\answerline{(a) 当shared/block = 13.2 KB时，根据100KB/SM的shared memory总容量计算，一个SM上可以容纳7个block。但是由于SM上最大的驻留thread数量为1536 = 256 * 6，且kernel launch的blockDim参数为256，
 因此每个SM最多驻留6个block，occupancy为100\%，与程序计算结果相同；
 (b) 当一个SM上有很多warp在执行时，一个warp的访存很容易跟另一个warp的计算进行overlap，从而隐藏计算/访存的延时。而当warp数量不够多时，很可能出现
 某个时刻所有的warp都在计算/都在访存，这样这部分延时就暴露出来了。在本例中，当block/SM = 1时，每个SM上只有4个warp，只要它们同时在计算，访存带宽在这个时候就是浪费的，因此导致bandwidth下降
 (c) 从 100\% 到 75\% 带宽没掉，从50.0\%到16.7\%大约掉了一半。这与前一问的解释是相关的，带宽掉多少取决于有多少延时没有被盖住，当warp数量足够多的时候，同一个SM的算力和带宽都已经被用满，是warp
-在等待SM的处理，这时候降低一些occupancy也不会有带宽的降低；而当warp数量降低到可以让SM的带宽出现空转的临界点时，带宽就会随occupancy显著下降。
+在等待SM的处理，这时候降低一些occupancy也不会有带宽的降低；而当warp数量降低到可以让SM的带宽出现空转的临界点时，带宽就会随occupancy显著下降。}
 
 \begin{lookback}
 本模块的八道题围绕同一个问题展开：数据放在哪一层，以什么模式去取。prob 4.1 给出一幅静态的存储层次地图，prob 4.2 与 4.3 在同一段 stencil 上切换存储位置，prob 4.5 与 4.6 在同一个直方图统计上做同样的变换，prob 4.7 和 4.8 则分别量化访问模式与可并发的请求数量。
@@ -638,19 +641,19 @@ make run/m5_async/01_timing_trap
 并回答下列问题：
 (a)~哪个数值可以当作 kernel 耗时写进报告？(b)~另外两个各具体测的是什么？
 
-答：(a) cudaEvent的计时可以当作kernel耗时写进报告
-(b) host计时、不等GPU记录的是CPU拉起kernel的时间，而host计时、等GPU记录的是kernel运行时间加上CPU拉起kernel的时间。
+\answerline{(a) cudaEvent的计时可以当作kernel耗时写进报告
+(b) host计时、不等GPU记录的是CPU拉起kernel的时间，而host计时、等GPU记录的是kernel运行时间加上CPU拉起kernel的时间。}
 
 
 \prob{5.2}{CONCEPT}
 判断对错，可以顺带补一句理由。
 \begin{enumerate}[label=(\alph*)]
   \item 同一个 stream 里的操作按提交顺序执行。
-  答：正确。
+  \answerline{正确。}
   \item kernel 启动后，host 代码立刻继续往下执行。
-  答：正确。只要CPU中还有别的任务不需要等待这个kernel进行sync，就可以继续执行别的操作，不用等kernel跑完。
+  \answerline{正确。只要CPU中还有别的任务不需要等待这个kernel进行sync，就可以继续执行别的操作，不用等kernel跑完。}
   \item unified memory 下，CPU 访问一页正被 GPU 占用的内存，会触发缺页与页迁移。
-  答：正确。内存页被GPU锁住时CPU无法访问。
+  \answerline{正确。内存页被GPU锁住时CPU无法访问。}
 \end{enumerate}
 
 \begin{lookback}
@@ -672,11 +675,11 @@ Guide 1.2.2.3（必读，篇幅不长）、2.4.1--2.4.6（浏览）、2.2（知�
 判断对错，可以顺带补一句理由。
 \begin{enumerate}[label=(\alph*)]
   \item tile 是显存里的一块可变区域，kernel 通过指针直接改写它。
-  答：错误。tile时不可变的，任何改动操作都会生成一个新的tile；题干的描述是array的性质。
+  \answerline{错误。tile时不可变的，任何改动操作都会生成一个新的tile；题干的描述是array的性质。}
   \item 对 tile 的一次运算（如两个 tile 相加）由编译器映射到 block 内的多个线程上执行。
-  答；正确。
+  \answerline{正确。}
   \item tile 模型与 SIMT 模型互斥，一个 CUDA 程序只能选一种。
-  答：错误。tile和SIMT可以共存于一个CUDA程序中。它们在kenrel层级的编程上是互斥的，一个kernel只能选择一种编程方式。
+  \answerline{错误。tile和SIMT可以共存于一个CUDA程序中。它们在kenrel层级的编程上是互斥的，一个kernel只能选择一种编程方式。}
 \end{enumerate}
 
 \prob{6.2}{CONCEPT}
@@ -704,17 +707,17 @@ def vec_add(a, b, c, TILE: ct.Constant[int]):
 \toprule
  & CUDA SIMT & cuTile & Triton \\
 \midrule
-并行单位 & block 里的 thread & block & \\
-编号 & \texttt{blockIdx} / \texttt{threadIdx} &  & \\
-数据分工 & 线程用全局下标来划分数据 & 用户划分tile，cuTile会自动编译将tile分给不同的block执行 & \\
-边界处理 & \texttt{if} 判断 & tile在编译时会自动按照用户指定的方法处理边界 & \\
+并行单位 & block 里的 thread & block & block\\
+编号 & \texttt{blockIdx} / \texttt{threadIdx} & \texttt{blockIdx} & \texttt{blockIdx}\\
+数据分工 & 线程用全局下标来划分数据 & 用户划分tile，cuTile会自动编译将tile分给不同的block执行 & 用户划分grid，triton自动分配block和thread进行并行\\
+边界处理 & \texttt{if} 判断 & tile在编译时会自动按照用户指定的方法处理边界 & 编译时自动按照用户指定的方法处理边界\\
 \bottomrule
 \end{tabular}
 \end{center}
 
 \prob{6.3}{CONCEPT}
 仍看上面这段代码。(a)~“每个线程对应哪个/些元素”由谁决定？(b)~列出一些在 CUDA SIMT 版向量加法里一定会出现、这里完全没体现出的概念。
-答：(a) 由cuTile编译器决定；(b)~threadIdx
+\answerline{(a) 由cuTile编译器决定；(b)~线程编号、warp、线程同步}
 
 \begin{lookback}
 tile 并非某个 DSL 的发明。NVIDIA 自己把它与 SIMT 并列写进了 Guide 正文，这本身就说明它是一类稳定的编程方式，而不是一次工具选型。
@@ -752,7 +755,7 @@ uv run pytest tests/test_fused_op.py
 
 改完回答——与 Module 2 里改 CUDA kernel 相比，这次的改动主要集中在 kernel 的什么部分？主体代码为什么一行都不用动？
 
-答：主要集中在 kernel 中的计算逻辑。主体代码不用动是因为确定好BLOCK_SIZE之后，底层的数据搬运和线程划分是由triton编译器自动完成的，用户只负责配置。
+\answerline{主要集中在 kernel 中的计算逻辑。主体代码不用动是因为确定好\texttt{BLOCK\_SIZE}之后，底层的数据搬运和线程划分是由triton编译器自动完成的，用户只负责配置。}
 
 \prob{7.3}{FILL-IN}[kernels/tilelang\_scale\_add.py]
 请填空：\texttt{kernels/tilelang\_scale\_add.py} ，具体要求见代码注释。测试命令：
@@ -773,7 +776,7 @@ uv run pytest tests/test_tilelang.py -k copy2d
 
 填完想一想：2.6 的四个空——行号、列号、边界保护、grid 尺寸——哪些在这里还有对应？没有对应的那个去哪了？
 
-答：行号、列号、grid 尺寸还有对应，边界保护被交给TileLang编译器自己处理了。
+\answerline{行号、列号、grid 尺寸还有对应，边界保护被交给TileLang编译器自己处理了。}
 
 \prob{7.5}{CONCEPT}
 补全下表，每个空填“用户”或“编译器”（二者都涉及的要写清楚各自的范围）。
@@ -801,7 +804,7 @@ uv run pytest tests/test_tilelang.py -k matmul
 
 填完回答——这五个空涉及到了 shared memory、寄存器 tile、流水，而 Triton 版 matmul（Bonus 的 \texttt{kernels/matmul\_triton.py}）并未被显式指定，为什么？
 
-答：因为TileLang支持对于tile进行存储空间分配和计算的并行方式进行定义，而Triton语言中用户只能定义tile，memory分配和具体的SIMT执行全部由编译器管理。
+\answerline{因为TileLang支持对于tile进行存储空间分配和计算的并行方式进行定义，而Triton语言中用户只能定义tile，memory分配和具体的SIMT执行全部由编译器管理。}
 
 \begin{capstone}{prob 7.7（FROM-SCRATCH）：softmax in TileLang \hfill {\footnotesize\ttfamily kernels/tilelang\_softmax.py}}
 在 \texttt{kernels/tilelang\_softmax.py} 里从零实现行 softmax，具体要求见文件开头的 docstring。
@@ -839,13 +842,13 @@ Guide 1.3 全章（必读）、2.1.1、2.7（浏览）。
 判断对错，可以顺带补一句理由。
 \begin{enumerate}[label=(\alph*)]
   \item PTX 是 GPU 直接执行的机器码。
-  答：错误。PTX是一种汇编程序，需要在GPU执行时再编译为对应GPU的binary code
+  \answerline{错误。PTX是一种汇编程序，需要在GPU执行时再编译为对应GPU的binary code}
   \item 只嵌入了 \texttt{sm\_70} SASS 的可执行文件，能在 compute capability 9.0 的卡上运行。
-  答：错误。sm_70与compute capability 9.0的卡不兼容，同时文件中缺乏ptx，因此无法编译出可兼容的binary code
+  \answerline{错误。\texttt{sm\_70}与compute capability 9.0的卡不兼容，同时文件中缺乏ptx，因此无法编译出可兼容的binary code}
   \item 一个 fatbin 可以同时携带多个架构的 SASS 和 PTX。
-  答：正确。
+  \answerline{正确。}
   \item JIT 编译由驱动在运行时完成。
-  答：正确。
+  \answerline{正确。}
 \end{enumerate}
 
 \prob[Optional]{8.2}{EXPERIMENT}[cuda/m0\_env/01\_hello.cu]
@@ -860,7 +863,7 @@ make sassonly/m0_env/01_hello
 ./bin/m0_env/01_hello_sassonly
 \end{lstlisting}
 
-答：报错信息为 CUDA error cudaErrorNoKernelImageForDevice at m0_env/01_hello.cu:11: no kernel image is available for execution on the device
+\answerline{报错信息为 CUDA error cudaErrorNoKernelImageForDevice at \texttt{m0\_env/01\_hello.cu}:11: no kernel image is available for execution on the device}
 
 (b)~生成只含 \texttt{compute\_75} PTX 的版本（CUDA 13 起 \texttt{compute\_70} 已被移除，Makefile 默认取 75）并运行。能正常运行吗？PTX 是在什么时候、由谁编译成这块卡的机器码的？
 
@@ -870,12 +873,12 @@ make ptxonly/m0_env/01_hello
 ./bin/m0_env/01_hello_ptxonly
 \end{lstlisting}
 
-答：程序可以正常运行。PTX是在程序加载的时候由设备驱动器进行JIT编译变成机器码的。
+\answerline{程序可以正常运行。PTX是在程序加载的时候由设备驱动器进行JIT编译变成机器码的。}
 
 \prob[Optional]{8.3}{CONCEPT}
 请简单说明 Runtime API 与 Driver API 各自的定位。\texttt{cudaMalloc} 属于哪个？
 
-答：Runtime API是留给用户方便编程的接口，而Driver API是暴露给NVIDIA DRIVER的API接口。\texttt{cudaMalloc} 属于前者。
+\answerline{Runtime API是留给用户方便编程的接口，而Driver API是暴露给NVIDIA DRIVER的API接口。\texttt{cudaMalloc} 属于前者。}
 
 \begin{lookback}
 Module 0 里那个“能跑就行”的 hello，现在被拆开重新看过：源码经 nvcc 分成 host 和 device 两路，device 端产出 PTX 与 SASS，一并打包进 fatbin；运行时 driver 再从中挑选合适的版本，或者对 PTX 做 JIT。
